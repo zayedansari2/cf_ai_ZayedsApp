@@ -247,14 +247,10 @@ async function handleClearSession() {
       throw new Error('Failed to clear session');
     }
 
-    // Generate new session
-    generateNewSession();
-    updateSessionDisplay();
-
     // Reset UI
     resetChatUI();
 
-    showToast('Session Cleared', 'Starting fresh with a new session!', 'success');
+    showToast('Session Cleared', 'Chat history was cleared for this session.', 'success');
     updateStatus('Ready', true);
 
   } catch (error) {
@@ -315,19 +311,33 @@ async function handleSendMessage() {
     setLoading(false);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      let apiError = `HTTP error! status: ${response.status}`;
+      try {
+        const errData = await response.json();
+        if (errData?.error) {
+          apiError = errData.error;
+        }
+      } catch (parseError) {
+        // Keep the default HTTP error when response isn't valid JSON.
+      }
+      throw new Error(apiError);
     }
 
     const data = await response.json();
+    const reply = typeof data?.reply === 'string' ? data.reply : null;
+
+    if (!reply) {
+      throw new Error('Invalid AI response payload');
+    }
 
     // Add AI response with typing effect
-    await addMessageWithTyping(data.reply, 'assistant');
+    await addMessageWithTyping(reply, 'assistant');
 
     // Update stats
     updateStats(data);
 
     // Optional: Text-to-speech
-    speakResponse(data.reply);
+    speakResponse(reply);
 
     updateStatus('Ready', true);
 
@@ -456,7 +466,7 @@ function updateStats(data) {
   if (data.totalMessages !== undefined) {
     elements.totalMessages.textContent = data.totalMessages;
   }
-  if (data.topicHints) {
+  if (data.topicHints || data.topicsAttempted) {
     updateTopicsList();
   }
 }
@@ -468,7 +478,8 @@ function addMessage(content, role) {
   const messageEl = document.createElement('div');
   messageEl.className = `message ${role}`;
 
-  const processedContent = processMessageContent(content);
+  const safeContent = typeof content === 'string' ? content : 'Unable to display message.';
+  const processedContent = processMessageContent(safeContent);
   messageEl.innerHTML = processedContent;
 
   elements.messages.appendChild(messageEl);
@@ -498,7 +509,8 @@ async function addMessageWithTyping(content, role) {
   // Small delay to simulate processing
   await new Promise(resolve => setTimeout(resolve, 300));
 
-  const processedContent = processMessageContent(content);
+  const safeContent = typeof content === 'string' ? content : 'Unable to display message.';
+  const processedContent = processMessageContent(safeContent);
   messageEl.innerHTML = processedContent;
 
   // Add copy buttons and highlight
@@ -513,11 +525,15 @@ async function addMessageWithTyping(content, role) {
 }
 
 function processMessageContent(content) {
+  if (typeof content !== 'string') {
+    return 'Unable to display message.';
+  }
+
   return content
     .replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
       return `<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code.trim())}</code></pre>`;
     })
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`]+)`/g, (match, code) => `<code>${escapeHtml(code)}</code>`)
     .replace(/\n/g, '<br>');
 }
 

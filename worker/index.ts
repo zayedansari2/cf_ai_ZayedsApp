@@ -462,14 +462,28 @@ export class ChatSession {
         lastActivity: Date.now(),
       };
       await this.state.storage.put("state", this.sessionState);
-      return new Response(JSON.stringify({ success: true }), {
-        headers: corsHeaders,
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Session cleared successfully",
+          clearedAt: Date.now(),
+        }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        },
+      );
     }
 
     if (request.method === "GET") {
       // Return session state
       return new Response(JSON.stringify(this.sessionState), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -522,17 +536,47 @@ export class ChatSession {
 
     // Get AI response
     try {
-      const aiResponse = await this.env.AI.run(
-        "@cf/meta/llama-3.3-70b-instruct",
-        {
-          messages: aiMessages,
-          temperature: 0.7,
-          max_tokens: 1024,
-        },
-      );
+      // Try stable Workers AI chat model names in order.
+      const modelCandidates = [
+        "@cf/meta/llama-3.1-8b-instruct",
+        "@cf/meta/llama-3-8b-instruct",
+      ];
+
+      let aiResponse: any = null;
+      let lastModelError: unknown = null;
+
+      for (const model of modelCandidates) {
+        try {
+          aiResponse = await this.env.AI.run(model, {
+            messages: aiMessages,
+            temperature: 0.7,
+            max_tokens: 1024,
+          });
+          break;
+        } catch (error) {
+          lastModelError = error;
+          console.warn(`AI model ${model} failed:`, error);
+        }
+      }
+
+      if (!aiResponse) {
+        console.error("All AI model candidates failed", lastModelError);
+        return new Response(
+          JSON.stringify({
+            error: "AI service unavailable",
+            details: "No available model could generate a response",
+          }),
+          {
+            status: 503,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
 
       const assistantMessage =
-        aiResponse.response || "I apologize, I could not generate a response.";
+        aiResponse.response ||
+        aiResponse.result?.response ||
+        "I apologize, I could not generate a response.";
 
       // Add AI response to history
       this.sessionState.messages.push({
@@ -550,10 +594,10 @@ export class ChatSession {
       // Prepare response with metadata
       const response = {
         reply: assistantMessage,
-        sessionId: this.state.id.toString(),
         topicHints: this.sessionState.currentProblem
           ? this.sessionState.topicsAttempted[this.sessionState.currentProblem]
           : null,
+        topicsAttempted: this.sessionState.topicsAttempted,
         totalMessages: this.sessionState.messages.length,
         difficulty: this.sessionState.difficulty,
       };
