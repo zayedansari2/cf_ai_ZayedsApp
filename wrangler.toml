@@ -1,0 +1,26 @@
+name = "cf_ai_zayedsapp"
+main = "worker/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
+
+[[durable_objects.bindings]]
+name = "CHAT_SESSIONS"
+class_name = "ChatSession"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatSession"]
+
+# For Pages deployment
+[site]
+bucket = "./pages"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"
+
+# Secrets (use `wrangler secret put` to set these)
+# [env.production.vars]

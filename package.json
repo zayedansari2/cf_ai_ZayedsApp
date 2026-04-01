@@ -1,0 +1,34 @@
+{
+  "name": "cf_ai_zayedsapp",
+  "version": "1.0.0",
+  "description": "CodeSpar - AI Coding Interview Coach powered by Cloudflare Workers AI",
+  "main": "worker/index.ts",
+  "scripts": {
+    "dev": "npx wrangler pages dev -- npm run dev:static",
+    "dev:static": "npx serve pages -l 8788",
+    "deploy": "npx wrangler deploy",
+    "deploy:pages": "npx wrangler pages deploy pages",
+    "lint": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{ts,js,json,html,css}\""
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "ai",
+    "coding-interview",
+    "socratic-method",
+    "durable-objects",
+    "llama"
+  ],
+  "author": "Zayed Ansari",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240403.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.48.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
