@@ -93,6 +93,11 @@ export default {
       return handleClearSession(request, env);
     }
 
+    // Route: Serve HTML for root and any non-API path
+    if (url.pathname === '/' || !url.pathname.startsWith('/api/')) {
+      return serveHTML();
+    }
+
     return jsonResponse({ error: 'Not found' }, 404);
   },
 };
@@ -187,6 +192,195 @@ function jsonResponse(data: any, status = 200): Response {
       ...corsHeaders,
     },
   });
+}
+
+// Serve HTML for the root path
+async function serveHTML(): Promise<Response> {
+  // For now, return a redirect to the static asset
+  // The site binding uploads assets to /index.html
+  return new Response(getIndexHTML(), {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+    },
+  });
+}
+
+// Embedded HTML content (simplified version that loads the full app)
+function getIndexHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeSpar - AI Coding Interview Coach</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
+  <style>
+    :root { --primary: #f48120; --bg-dark: #1a1a1a; --bg-card: #252525; --text: #e0e0e0; --text-muted: #888; --border: #333; --accent: #00d4aa; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-dark); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .logo { display: flex; align-items: center; gap: 0.75rem; }
+    .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), #d9650c); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.25rem; }
+    .logo h1 { font-size: 1.5rem; font-weight: 600; }
+    .logo span { color: var(--primary); }
+    main { flex: 1; display: flex; overflow: hidden; }
+    .sidebar { width: 280px; background: var(--bg-card); border-right: 1px solid var(--border); padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+    .sidebar-section h3 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem; }
+    .difficulty-selector { display: flex; gap: 0.5rem; }
+    .difficulty-btn { flex: 1; padding: 0.5rem; border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.875rem; }
+    .difficulty-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .stat { text-align: center; padding: 1rem; background: var(--bg-dark); border-radius: 8px; }
+    .stat-value { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .chat-container { flex: 1; display: flex; flex-direction: column; }
+    .messages { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .welcome { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+    .welcome h2 { color: var(--text); margin-bottom: 1rem; font-size: 1.75rem; }
+    .message { max-width: 85%; padding: 1rem; border-radius: 12px; line-height: 1.6; }
+    .message.user { align-self: flex-end; background: var(--primary); color: white; }
+    .message.assistant { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); }
+    .input-container { border-top: 1px solid var(--border); padding: 1rem 1.5rem; background: var(--bg-card); }
+    .input-wrapper { display: flex; gap: 0.75rem; align-items: flex-end; }
+    textarea { flex: 1; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem; color: var(--text); font-size: 1rem; resize: none; min-height: 52px; max-height: 200px; font-family: inherit; }
+    textarea:focus { outline: none; border-color: var(--primary); }
+    .icon-btn { width: 48px; height: 48px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text); border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .icon-btn.recording { background: #ff4444; color: white; }
+    .send-btn { width: 48px; height: 48px; background: var(--primary); border: none; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .typing { display: flex; gap: 0.25rem; padding: 1rem; }
+    .typing span { width: 8px; height: 8px; background: var(--text-muted); border-radius: 50%; animation: typing 1.4s infinite; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-10px); } }
+    @media (max-width: 768px) { .sidebar { display: none; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <div class="logo-icon">CS</div>
+      <h1>Code<span>Spar</span></h1>
+    </div>
+  </header>
+  <main>
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <h3>Difficulty</h3>
+        <div class="difficulty-selector">
+          <button class="difficulty-btn" data-level="easy">Easy</button>
+          <button class="difficulty-btn active" data-level="medium">Medium</button>
+          <button class="difficulty-btn" data-level="hard">Hard</button>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <h3>Progress</h3>
+        <div class="stats">
+          <div class="stat"><div class="stat-value" id="totalMessages">0</div><div class="stat-label">Messages</div></div>
+          <div class="stat"><div class="stat-value" id="topicsCount">0</div><div class="stat-label">Topics</div></div>
+        </div>
+      </div>
+    </aside>
+    <div class="chat-container">
+      <div class="messages" id="messages">
+        <div class="welcome">
+          <h2>Welcome to CodeSpar</h2>
+          <p>Your AI coding interview coach. Ask me about data structures, algorithms, or system design!</p>
+        </div>
+      </div>
+      <div class="input-container">
+        <div class="input-wrapper">
+          <textarea id="input" placeholder="Ask a coding question..."></textarea>
+          <button class="icon-btn" id="voiceBtn" title="Voice">🎤</button>
+          <button class="send-btn" id="sendBtn">➤</button>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    const API_URL = '/api/chat';
+    const SESSION_KEY = 'codespar_session';
+    let sessionId = localStorage.getItem(SESSION_KEY) || 'sess_' + Date.now();
+    localStorage.setItem(SESSION_KEY, sessionId);
+    let currentDifficulty = 'medium';
+    let recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (recognition) recognition = new recognition();
+
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+
+    function addMessage(content, role) {
+      const div = document.createElement('div');
+      div.className = 'message ' + role;
+      div.innerHTML = content.replace(/\n/g, '<br>');
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function showTyping() {
+      const id = 'typing-' + Date.now();
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'message assistant typing';
+      div.innerHTML = '<span></span><span></span><span></span>';
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return id;
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      inputEl.value = '';
+      document.querySelector('.welcome')?.remove();
+      addMessage(text, 'user');
+      const typingId = showTyping();
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, message: text, difficulty: currentDifficulty })
+        });
+        const data = await res.json();
+        document.getElementById(typingId).remove();
+        addMessage(data.reply, 'assistant');
+        document.getElementById('totalMessages').textContent = data.totalMessages || 0;
+        if (data.topicHints) {
+          document.getElementById('topicsCount').textContent = Object.keys(data.topicHints).length;
+        }
+      } catch (e) {
+        document.getElementById(typingId).remove();
+        addMessage('Error: Could not get response', 'assistant');
+      }
+    }
+
+    document.getElementById('sendBtn').addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    document.querySelectorAll('.difficulty-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDifficulty = btn.dataset.level;
+      });
+    });
+    if (recognition) {
+      let isRecording = false;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      const voiceBtn = document.getElementById('voiceBtn');
+      voiceBtn.addEventListener('click', () => {
+        if (isRecording) { recognition.stop(); isRecording = false; voiceBtn.classList.remove('recording'); }
+        else { recognition.start(); isRecording = true; voiceBtn.classList.add('recording'); }
+      });
+      recognition.onresult = e => {
+        const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+        inputEl.value = transcript;
+      };
+      recognition.onend = () => { isRecording = false; voiceBtn.classList.remove('recording'); };
+    }
+  <\/script>
+</body>
+</html>`;
 }
 
 // Durable Object class for chat sessions
