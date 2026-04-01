@@ -1,8 +1,11 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
+
 export interface Env {
   AI: any;
   CHAT_SESSIONS: DurableObjectNamespace;
+  __STATIC_CONTENT: KVNamespace;
 }
 
 // Session state interface
@@ -93,14 +96,38 @@ export default {
       return handleClearSession(request, env);
     }
 
-    // Route: Serve HTML for root and any non-API path
-    if (url.pathname === '/' || !url.pathname.startsWith('/api/')) {
-      return serveHTML();
+    // Route: Serve static frontend assets from the configured site bucket.
+    // This ensures app.js and styles.css are returned as real assets, not HTML.
+    if (!url.pathname.startsWith('/api/')) {
+      return serveFrontendAsset(request, env);
     }
 
     return jsonResponse({ error: 'Not found' }, 404);
   },
 };
+
+async function serveFrontendAsset(request: Request, env: Env): Promise<Response> {
+  try {
+    const assetResponse = await getAssetFromKV(
+      {
+        request,
+        waitUntil: () => {},
+      } as any,
+      {
+        ASSET_NAMESPACE: env.__STATIC_CONTENT,
+      }
+    );
+
+    return new Response(assetResponse.body, assetResponse);
+  } catch (error) {
+    const url = new URL(request.url);
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      return serveHTML();
+    }
+
+    return new Response('Not found', { status: 404 });
+  }
+}
 
 // Handle chat requests
 async function handleChat(request: Request, env: Env): Promise<Response> {
