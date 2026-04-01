@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 export interface Env {
   AI: any;
   CHAT_SESSIONS: DurableObjectNamespace;
@@ -162,7 +164,7 @@ async function handleClearSession(request: Request, env: Env): Promise<Response>
     const id = env.CHAT_SESSIONS.idFromName(sessionId);
     const session = env.CHAT_SESSIONS.get(id);
 
-    const response = await session.fetch('/clear', {
+    await session.fetch('/clear', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
