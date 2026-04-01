@@ -1,6 +1,11 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
+import { getAssetFromKV } from "@cloudflare/kv-asset-handler";
+// Wrangler injects this virtual module for Workers Sites asset path mapping.
+// It maps logical paths like /app.js to hashed KV keys.
+import assetManifestJSON from "__STATIC_CONTENT_MANIFEST";
+
+const assetManifest = JSON.parse(assetManifestJSON);
 
 export interface Env {
   AI: any;
@@ -15,14 +20,17 @@ interface SessionState {
     content: string;
     timestamp: number;
   }>;
-  topicsAttempted: Record<string, {
-    attempts: number;
-    hintsGiven: number;
-    solved: boolean;
-    lastAttempt: number;
-  }>;
+  topicsAttempted: Record<
+    string,
+    {
+      attempts: number;
+      hintsGiven: number;
+      solved: boolean;
+      lastAttempt: number;
+    }
+  >;
   currentProblem?: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: "easy" | "medium" | "hard";
   createdAt: number;
   lastActivity: number;
 }
@@ -58,55 +66,58 @@ Keep responses conversational, supportive, and focused on guiding the user's thi
 
 // CORS headers for Pages frontend
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
 
 // Main request handler
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
+    if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
 
     const url = new URL(request.url);
 
     // Route: Health check
-    if (url.pathname === '/api/health') {
-      return jsonResponse({ status: 'ok', service: 'CodeSpar API' });
+    if (url.pathname === "/api/health") {
+      return jsonResponse({ status: "ok", service: "CodeSpar API" });
     }
 
     // Route: Chat endpoint
-    if (url.pathname === '/api/chat' && request.method === 'POST') {
+    if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChat(request, env);
     }
 
     // Route: Get session history
-    if (url.pathname.startsWith('/api/session/') && request.method === 'GET') {
-      const sessionId = url.pathname.split('/').pop();
+    if (url.pathname.startsWith("/api/session/") && request.method === "GET") {
+      const sessionId = url.pathname.split("/").pop();
       if (sessionId) {
         return handleGetSession(sessionId, env);
       }
     }
 
     // Route: Clear session
-    if (url.pathname === '/api/clear' && request.method === 'POST') {
+    if (url.pathname === "/api/clear" && request.method === "POST") {
       return handleClearSession(request, env);
     }
 
     // Route: Serve static frontend assets from the configured site bucket.
     // This ensures app.js and styles.css are returned as real assets, not HTML.
-    if (!url.pathname.startsWith('/api/')) {
+    if (!url.pathname.startsWith("/api/")) {
       return serveFrontendAsset(request, env);
     }
 
-    return jsonResponse({ error: 'Not found' }, 404);
+    return jsonResponse({ error: "Not found" }, 404);
   },
 };
 
-async function serveFrontendAsset(request: Request, env: Env): Promise<Response> {
+async function serveFrontendAsset(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   try {
     const assetResponse = await getAssetFromKV(
       {
@@ -115,33 +126,34 @@ async function serveFrontendAsset(request: Request, env: Env): Promise<Response>
       } as any,
       {
         ASSET_NAMESPACE: env.__STATIC_CONTENT,
-      }
+        ASSET_MANIFEST: assetManifest,
+      },
     );
 
     return new Response(assetResponse.body, assetResponse);
   } catch (error) {
     const url = new URL(request.url);
-    if (url.pathname === '/' || url.pathname === '/index.html') {
+    if (url.pathname === "/" || url.pathname === "/index.html") {
       return serveHTML();
     }
 
-    return new Response('Not found', { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
 }
 
 // Handle chat requests
 async function handleChat(request: Request, env: Env): Promise<Response> {
   try {
-    const body = await request.json() as {
+    const body = (await request.json()) as {
       sessionId: string;
       message: string;
-      difficulty?: 'easy' | 'medium' | 'hard';
+      difficulty?: "easy" | "medium" | "hard";
     };
 
-    const { sessionId, message, difficulty = 'medium' } = body;
+    const { sessionId, message, difficulty = "medium" } = body;
 
     if (!sessionId || !message) {
-      return jsonResponse({ error: 'Missing sessionId or message' }, 400);
+      return jsonResponse({ error: "Missing sessionId or message" }, 400);
     }
 
     // Get or create Durable Object instance
@@ -150,63 +162,66 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
     // Forward request to Durable Object
     const response = await session.fetch(request.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, difficulty }),
     });
 
     const result = await response.json();
     return jsonResponse(result);
-
   } catch (error) {
-    console.error('Chat error:', error);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    console.error("Chat error:", error);
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 }
 
 // Get session history
-async function handleGetSession(sessionId: string, env: Env): Promise<Response> {
+async function handleGetSession(
+  sessionId: string,
+  env: Env,
+): Promise<Response> {
   try {
     const id = env.CHAT_SESSIONS.idFromName(sessionId);
     const session = env.CHAT_SESSIONS.get(id);
 
     const response = await session.fetch(`/session/${sessionId}`, {
-      method: 'GET',
+      method: "GET",
     });
 
     const result = await response.json();
     return jsonResponse(result);
-
   } catch (error) {
-    console.error('Get session error:', error);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    console.error("Get session error:", error);
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 }
 
 // Clear session data
-async function handleClearSession(request: Request, env: Env): Promise<Response> {
+async function handleClearSession(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   try {
-    const body = await request.json() as { sessionId: string };
+    const body = (await request.json()) as { sessionId: string };
     const { sessionId } = body;
 
     if (!sessionId) {
-      return jsonResponse({ error: 'Missing sessionId' }, 400);
+      return jsonResponse({ error: "Missing sessionId" }, 400);
     }
 
     const id = env.CHAT_SESSIONS.idFromName(sessionId);
     const session = env.CHAT_SESSIONS.get(id);
 
-    await session.fetch('/clear', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    await session.fetch("/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
 
-    return jsonResponse({ success: true, message: 'Session cleared' });
-
+    return jsonResponse({ success: true, message: "Session cleared" });
   } catch (error) {
-    console.error('Clear session error:', error);
-    return jsonResponse({ error: 'Internal server error' }, 500);
+    console.error("Clear session error:", error);
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 }
 
@@ -215,7 +230,7 @@ function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...corsHeaders,
     },
   });
@@ -227,7 +242,7 @@ async function serveHTML(): Promise<Response> {
   // The site binding uploads assets to /index.html
   return new Response(getIndexHTML(), {
     headers: {
-      'Content-Type': 'text/html;charset=UTF-8',
+      "Content-Type": "text/html;charset=UTF-8",
     },
   });
 }
@@ -422,7 +437,7 @@ export class ChatSession {
     this.sessionState = {
       messages: [],
       topicsAttempted: {},
-      difficulty: 'medium',
+      difficulty: "medium",
       createdAt: Date.now(),
       lastActivity: Date.now(),
     };
@@ -432,37 +447,37 @@ export class ChatSession {
     const url = new URL(request.url);
 
     // Load existing state if any
-    const stored = await this.state.storage.get<SessionState>('state');
+    const stored = await this.state.storage.get<SessionState>("state");
     if (stored) {
       this.sessionState = stored;
     }
 
-    if (url.pathname === '/clear') {
+    if (url.pathname === "/clear") {
       // Clear session data
       this.sessionState = {
         messages: [],
         topicsAttempted: {},
-        difficulty: 'medium',
+        difficulty: "medium",
         createdAt: Date.now(),
         lastActivity: Date.now(),
       };
-      await this.state.storage.put('state', this.sessionState);
+      await this.state.storage.put("state", this.sessionState);
       return new Response(JSON.stringify({ success: true }), {
         headers: corsHeaders,
       });
     }
 
-    if (request.method === 'GET') {
+    if (request.method === "GET") {
       // Return session state
       return new Response(JSON.stringify(this.sessionState), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
     // Handle chat message
-    const body = await request.json() as {
+    const body = (await request.json()) as {
       message: string;
-      difficulty?: 'easy' | 'medium' | 'hard';
+      difficulty?: "easy" | "medium" | "hard";
     };
 
     const { message, difficulty } = body;
@@ -490,15 +505,16 @@ export class ChatSession {
 
     // Add user message to history
     this.sessionState.messages.push({
-      role: 'user',
+      role: "user",
       content: message,
       timestamp: Date.now(),
     });
 
     // Build messages for AI
     const aiMessages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...this.sessionState.messages.slice(-20).map(m => ({ // Keep last 20 messages for context
+      { role: "system", content: SYSTEM_PROMPT },
+      ...this.sessionState.messages.slice(-20).map((m) => ({
+        // Keep last 20 messages for context
         role: m.role,
         content: m.content,
       })),
@@ -507,19 +523,20 @@ export class ChatSession {
     // Get AI response
     try {
       const aiResponse = await this.env.AI.run(
-        '@cf/meta/llama-3.3-70b-instruct',
+        "@cf/meta/llama-3.3-70b-instruct",
         {
           messages: aiMessages,
           temperature: 0.7,
           max_tokens: 1024,
-        }
+        },
       );
 
-      const assistantMessage = aiResponse.response || 'I apologize, I could not generate a response.';
+      const assistantMessage =
+        aiResponse.response || "I apologize, I could not generate a response.";
 
       // Add AI response to history
       this.sessionState.messages.push({
-        role: 'assistant',
+        role: "assistant",
         content: assistantMessage,
         timestamp: Date.now(),
       });
@@ -528,44 +545,63 @@ export class ChatSession {
       this.sessionState.lastActivity = Date.now();
 
       // Save state
-      await this.state.storage.put('state', this.sessionState);
+      await this.state.storage.put("state", this.sessionState);
 
       // Prepare response with metadata
       const response = {
         reply: assistantMessage,
         sessionId: this.state.id.toString(),
-        topicHints: this.sessionState.currentProblem ?
-          this.sessionState.topicsAttempted[this.sessionState.currentProblem] : null,
+        topicHints: this.sessionState.currentProblem
+          ? this.sessionState.topicsAttempted[this.sessionState.currentProblem]
+          : null,
         totalMessages: this.sessionState.messages.length,
         difficulty: this.sessionState.difficulty,
       };
 
       return new Response(JSON.stringify(response), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
-
     } catch (error) {
-      console.error('AI error:', error);
-      return new Response(
-        JSON.stringify({ error: 'AI service unavailable' }),
-        {
-          status: 503,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        }
-      );
+      console.error("AI error:", error);
+      return new Response(JSON.stringify({ error: "AI service unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
     }
   }
 
   // Simple topic detection
   private detectTopic(message: string): string | null {
     const topics = [
-      'linked list', 'array', 'tree', 'binary tree', 'bst',
-      'graph', 'bfs', 'dfs', 'dynamic programming', 'dp',
-      'sort', 'search', 'hash map', 'hash table', 'heap',
-      'queue', 'stack', 'recursion', 'backtracking',
-      'system design', 'api design', 'database', 'cache',
-      'two pointers', 'sliding window', 'binary search',
-      'merge sort', 'quick sort', 'heap sort',
+      "linked list",
+      "array",
+      "tree",
+      "binary tree",
+      "bst",
+      "graph",
+      "bfs",
+      "dfs",
+      "dynamic programming",
+      "dp",
+      "sort",
+      "search",
+      "hash map",
+      "hash table",
+      "heap",
+      "queue",
+      "stack",
+      "recursion",
+      "backtracking",
+      "system design",
+      "api design",
+      "database",
+      "cache",
+      "two pointers",
+      "sliding window",
+      "binary search",
+      "merge sort",
+      "quick sort",
+      "heap sort",
     ];
 
     const lowerMsg = message.toLowerCase();
@@ -575,6 +611,6 @@ export class ChatSession {
       }
     }
 
-    return 'general coding';
+    return "general coding";
   }
 }
